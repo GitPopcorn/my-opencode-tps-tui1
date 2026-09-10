@@ -1,0 +1,4 @@
+node_modules/
+.loadtest/
+*.log
+.workbuddy/
