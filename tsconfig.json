@@ -11,7 +11,7 @@
 		"noEmit": true,
 		"skipLibCheck": true,
 		"resolveJsonModule": true,
-		"types": []
+		"types": ["node"]
 	},
 	"include": [
 		"tui.tsx",

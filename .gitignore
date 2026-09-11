@@ -1,4 +1,14 @@
+# Node 依赖
 node_modules/
-.loadtest/
+
+# 日志文件
 *.log
+
+# 加载测试文件
+.loadtest/
+
+# WorkBuddy 环境文件
 .workbuddy/
+
+# ZVec-Grep 索引文件
+.zvec-grep/

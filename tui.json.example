@@ -15,6 +15,12 @@
 					"TOTAL_DUR",
 					"STS"
 				],
+				"labels": {
+					"AVG_TPS": "AVG",
+					"TOKEN": "✪",
+					"TOTAL_TK": "总词元数",
+					"DUR": "⏱️"
+				},
 				"separator": "|",
 				"countPrecision": 4,
 				"secondPrecision": 0,

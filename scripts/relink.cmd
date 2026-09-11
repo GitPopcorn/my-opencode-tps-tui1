@@ -27,6 +27,7 @@ SET "PLUGIN_VERSION=latest"
 IF /I "%~1"=="Help"   GOTO :USAGE
 IF /I "%~1"=="-Help"  GOTO :USAGE
 IF /I "%~1"=="--Help" GOTO :USAGE
+IF /I "%~1"=="-H"     GOTO :USAGE
 IF /I "%~1"=="/?"     GOTO :USAGE
 
 @REM STEP 把本脚本所在的上一级目录解析成绝对路径
@@ -55,7 +56,7 @@ SET "SHELL_PKG=%CACHE_ROOT%\package.json"
 
 @REM STEP 已就绪则直接返回，避免无谓的删除动作
 IF EXIST "%LINK_PATH%\package.json" (
-	ECHO [已就绪] %LINK_PATH%
+	ECHO [就绪] %LINK_PATH%
 	ECHO          已指向 %PLUGIN_DIR%
 	EXIT /B 0
 )
@@ -83,16 +84,16 @@ IF EXIST "%LINK_PATH%\" (
 	EXIT /B 2
 )
 
-@REM STEP 创建 junction
+@REM STEP 创建 JUNCTION
 MKLINK /J "%LINK_PATH%" "%PLUGIN_DIR%"
 IF ERRORLEVEL 1 (
-	ECHO [失败] junction 创建失败
+	ECHO [失败] JUNCTION 目录链接创建失败
 	EXIT /B 1
 )
 
 @REM STEP 校验
 IF NOT EXIST "%LINK_PATH%\package.json" (
-	ECHO [失败] 链接已建立但穿透校验不通过
+	ECHO [失败] 目录链接已建立但穿透校验不通过
 	EXIT /B 1
 )
 
@@ -106,11 +107,11 @@ ECHO 重启 opencode 生效
 EXIT /B 0
 
 :USAGE
-ECHO 重建 my-opencode-tps-tui1 的缓存 junction
+ECHO 重建 my-opencode-tps-tui1 的缓存 JUNCTION
 ECHO.
 ECHO 用法:
-ECHO     relink.cmd          执行重建
-ECHO     relink.cmd Help     显示本帮助
+ECHO     relink.cmd                           执行重建
+ECHO     relink.cmd [--Help^|-Help^|Help^|-H^|/?] 显示本帮助
 ECHO.
 ECHO 何时需要:
 ECHO     执行过 opencode uninstall

@@ -1,6 +1,6 @@
 {
 	"name": "my-opencode-tps-tui1",
-	"version": "1.0.0",
+	"version": "1.1.0",
 	"description": "TPS / 词元 / 时延 HUD，渲染在 OpenCode 1.x TUI 的会话提示行右侧",
 	"type": "module",
 	"license": "MIT",
@@ -29,14 +29,18 @@
 		"ttft"
 	],
 	"engines": {
-		"opencode": ">=1.14"
+		"opencode": ">=1.18",
+		"bun": ">=1.0.0"
 	},
-	"comment": "WARN 入口必须是原始 tui.tsx，不要改成预编译产物。宿主的 Solid 转换插件只跳过路径含 node_modules 的文件；本插件经 junction 加载时真实路径在 node_modules 之外，压缩过的 .js 会被转换器处理并直接崩掉，插件被静默丢弃。原始 .tsx 在两种路径下都正常（node_modules 外走转换器，node_modules 内走文件头的 @jsxImportSource 指令）。另：dependencies 必须保持为空，理由见 README 第十一节。",
 	"devDependencies": {
 		"@opencode-ai/plugin": "1.18.25",
 		"@opentui/core": "0.5.8",
 		"@opentui/solid": "0.5.8",
+		"@types/node": "^22.20.2",
 		"solid-js": "1.9.12",
-		"typescript": "^5.9.2"
+		"typescript": "^5.9.3"
+	},
+	"allowScripts": {
+		"msgpackr-extract@3.0.4": true
 	}
 }
