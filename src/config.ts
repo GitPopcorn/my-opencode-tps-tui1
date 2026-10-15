@@ -68,8 +68,20 @@ export type RefreshConfig = {
 	clock: number;
 };
 
-/** CONST 默认显示项：全展示，顺序即渲染顺序 */
+/** CONST 默认展示项：全展示，顺序即渲染顺序 */
 export const DEFAULT_ITEMS: FieldName[] = [...FIELD_ORDER];
+
+/** CONST 默认开启的展示位置，顺序即渲染优先级 */
+export const DEFAULT_LOCATIONS: LocationName[] = ["prompt", "sidebar"];
+
+/** CONST 侧边栏区块默认标题行文本 */
+export const DEFAULT_SIDEBAR_TITLE = "METRICS";
+
+/** CONST 侧边栏字段行默认行首缩进：两个空格 */
+export const DEFAULT_SIDEBAR_INDENT = "  ";
+
+/** CONST 侧边栏缓冲动画图标默认开关：默认开启，关掉后不创建节点也不启动帧定时器 */
+export const DEFAULT_SIDEBAR_SPINNER = true;
 
 /** CONST STS 默认文案，可通过 options.sts 覆盖任意一项 */
 export const DEFAULT_STS_TEXT = {
@@ -109,6 +121,12 @@ export const DEFAULT_LABELS: LabelMap = {
 /** VAR 单次读数口径：turn=一轮对话聚合，message=最近一条消息 */
 export type Scope = "turn" | "message";
 
+/** VAR 展示位置：prompt=输入框底部单行，sidebar=侧边栏多行区块 */
+export type LocationName = "prompt" | "sidebar";
+
+/** VAR 侧边栏区块落点：content=侧边栏滚动内容区，footer=侧边栏底部 */
+export type SidebarSlot = "content" | "footer";
+
 /** VAR 解析后的完整配置类型 */
 export type ResolvedConfig = {
 	items: FieldName[];
@@ -128,6 +146,20 @@ export type ResolvedConfig = {
 	refresh: RefreshConfig;
 	toastOnComplete: boolean;
 	sts: StsText;
+	/** VAR 开启的展示位置列表，顺序即渲染优先级 */
+	locations: LocationName[];
+	/** VAR 侧边栏区块落在内容区还是底部 */
+	sidebarSlot: SidebarSlot;
+	/** VAR 侧边栏区块初始是否折叠 */
+	sidebarCollapsed: boolean;
+	/** VAR 侧边栏区块标题行文本 */
+	sidebarTitle: string;
+	/** VAR 侧边栏每个字段行的行首缩进 */
+	sidebarIndent: string;
+	/** VAR 是否把各字段的值对齐到同一列 */
+	sidebarAlign: boolean;
+	/** VAR 标题行右侧是否渲染缓冲动画图标；关掉后侧边栏不再表达工作状态 */
+	sidebarSpinner: boolean;
 };
 
 /** CONST 全量默认配置，所有可选项的兜底值 */
@@ -145,6 +177,13 @@ export const DEFAULT_CONFIG: ResolvedConfig = {
 	refresh: { ...DEFAULT_REFRESH },
 	toastOnComplete: false,
 	sts: { ...DEFAULT_STS_TEXT },
+	locations: [...DEFAULT_LOCATIONS],
+	sidebarSlot: "content",
+	sidebarCollapsed: false,
+	sidebarTitle: DEFAULT_SIDEBAR_TITLE,
+	sidebarIndent: DEFAULT_SIDEBAR_INDENT,
+	sidebarAlign: true,
+	sidebarSpinner: DEFAULT_SIDEBAR_SPINNER,
 };
 
 /** CONST 刷新间隔允许下限 (毫秒)，防止过密采样拖垮渲染 */
@@ -155,6 +194,9 @@ const MAX_REFRESH_MS = 60000;
 
 /** CONST 字段名查表，用于快速校验 */
 const FIELD_LOOKUP = new Set<string>(FIELD_ORDER);
+
+/** CONST 展示位置查表，用于快速校验 */
+const LOCATION_LOOKUP = new Set<string>(DEFAULT_LOCATIONS);
 
 // ===== ===== ===== ===== [内部方法] ===== ===== ===== =====
 
@@ -195,6 +237,34 @@ function normalizeItems(raw: unknown): FieldName[] {
 
 	// BRANCH 全部被过滤掉时回落到默认全展示
 	if (picked.length === 0) return [...DEFAULT_ITEMS];
+	return picked;
+
+}
+
+/**
+ * 归一化展示位置数组：去重、丢弃未知位置、保持用户给定顺序、空结果回落默认全开
+ * @param {unknown} raw 用户传入的 locations 原始值
+ * @return {LocationName[]} locations 归一化后的展示位置数组
+ * @author DeepSeek_V4_Flash
+ * @date 2026-09-11
+ * @note note
+ */
+function normalizeLocations(raw: unknown): LocationName[] {
+	// BRANCH 非数组直接回落默认全开
+	if (! Array.isArray(raw)) return [...DEFAULT_LOCATIONS];
+
+	// STEP 去重并丢弃未知位置，保持用户给定顺序
+	const picked: LocationName[] = [];
+	for (const entry of raw) {
+		if (typeof entry !== "string") continue;
+		const name = entry.trim();
+		if (! LOCATION_LOOKUP.has(name)) continue;
+		if (picked.includes(name as LocationName)) continue;
+		picked.push(name as LocationName);
+	}
+
+	// BRANCH 全部被过滤掉时回落到默认全开
+	if (picked.length === 0) return [...DEFAULT_LOCATIONS];
 	return picked;
 
 }
@@ -322,6 +392,17 @@ export function resolveConfig(options?: Record<string, unknown>): ResolvedConfig
 		refresh: normalizeRefresh(source),
 		toastOnComplete: source.toastOnComplete === true,
 		sts: normalizeSts(source.sts),
+		// BRANCH 展示位置与侧边栏区块选项：非法值一律回落默认，避免组件层拿到半成品配置
+		locations: normalizeLocations(source.locations),
+		sidebarSlot: source.sidebarSlot === "footer" ? "footer" : DEFAULT_CONFIG.sidebarSlot,
+		sidebarCollapsed: source.sidebarCollapsed === true,
+		sidebarTitle: typeof source.sidebarTitle === "string" && source.sidebarTitle.length > 0 ? source.sidebarTitle : DEFAULT_CONFIG.sidebarTitle,
+		sidebarIndent: typeof source.sidebarIndent === "string" ? source.sidebarIndent : DEFAULT_CONFIG.sidebarIndent,
+		sidebarAlign: source.sidebarAlign === false ? false : true,
+
+		// PART 缓冲动画图标默认开启：关掉后侧边栏不再用动画表达工作状态；
+		// 判据与 sidebarAlign 一致，只有显式 false 才关闭，非布尔值一律回落为开
+		sidebarSpinner: source.sidebarSpinner === false ? false : DEFAULT_CONFIG.sidebarSpinner,
 	};
 
 }

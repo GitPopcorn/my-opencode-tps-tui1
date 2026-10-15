@@ -93,7 +93,7 @@
 
 仍开放：
 
-- **跨重启持久化**：累计值只活在进程内，OpenCode 重启后从零开始。TUI API 提供 `api.kv`，是否做持久化待定
+- **跨重启持久化**：累计值只活在进程内，OpenCode 重启后从零开始。目前用到 TUI API 的 `api.kv` 的只有侧边栏区块的折叠状态一项，**累计指标值本身仍然不跨重启持久化**，两者不要混为一谈；是否也给累计值做持久化待定
 
 ---
 
@@ -108,3 +108,113 @@
 - **轮次裁决重构**：清轮只由「上一轮关闭 (finish ≠ tool-calls) + 新 assistant 消息」触发，杜绝对话中/结束后被锯齿清零
 - **TTFT 实时化**：首个流式增量到达即确定，流式期间也可读
 - **时间整秒**：`secondPrecision` 默认 0，`5.46s` → `5s`
+
+---
+
+## 七、侧边栏区块的渲染机制
+
+侧边栏区块与输入框底部单行读的是同一份 `Readout`，差别只在排版与节点粒度
+
+### 每字段一节点
+
+输入框底部是「全部字段拼进一个字符串 → 一个 `<text>` 节点」的单块渲染；侧边栏相反，**每个字段一行**，每行是一个 `width="100%"` 的 row box，内部拆成标签 `<text>` 与值 `<text>` 两个子节点
+
+- 标题行同样是 `width="100%"` + `justifyContent="space-between"` 的 row：左区装折叠箭头、标题与折叠摘要，右区留给缓冲动画图标
+- `sidebarAlign` 为 `true` 时每行用 `justifyContent="space-between"` 把值顶到容器右边界 (`paddingLeft` 之外的内边距边缘)，标签 `flexShrink={0}`、值 `flexShrink={1}` 且 `truncate`；为 `false` 时去掉 `space-between`、改用 `columnGap={1}` 让两者紧邻
+- `sidebarIndent` 不是字符串直接拼进文本，而是先 `displayWidth(indent)` 折算成**列数**再作为 row 的 `paddingLeft`，所以缩进是排版属性而不是文本内容
+- 零边框、零行间 gap、零补空格对齐；`hideEmpty` 与 `composeLine` 同一语义：无数据字段先滤掉，未滤时用 `emptyText` 占位
+- 副作用：值列对齐由 flex 完成，不依赖宽字符表，所以 `src/render.ts` 里的 `composeSidebarLines` 已不在运行时路径上，目前只有 `bun run selftest` 仍在断言它
+
+### 折叠靠改 visible 而非增删节点
+
+折叠 / 展开**只切节点的 `visible`**，不销毁也不重建字段节点
+
+- 折叠前后字段节点、`ref`、节拍计时全部原样保留，展开即立刻显示当前读数，不必重新等一次刷新到期
+- 节点数量恒定，切换折叠态本身没有渲染开销，也不会触发重新建行
+- 折叠态经 `api.kv` 持久化；`sidebarCollapsed` 只决定首次启动的初始形态，持久化值优先
+
+### 复用同一套三档刷新与读数口径
+
+两个位置挂在**同一次广播**上：基准节拍与事件回调都调用 `requestAll(force)`，把**同一个 `now` 时间戳**依次喂给该会话已登记的全部刷新回调
+
+- live / count / clock 三档到期判定、`refreshLiveMs` / `refreshCountMs` / `refreshClockMs` 三个间隔、状态类事件强制全量刷新 —— 与输入框底部那一行逐条一致
+- 两个位置**各自**持有字段采样缓存（`FieldSlot[]` + 各自的 `at` 时间戳），也**各自**调用一次 `buildReadout`；由于 `state`、`sessionID`、`now`、`config` 四项完全相同，两次计算的结果必然相同
+- 所以**两个位置的数值一致**，但严格说是「同一份输入算两遍、结果相同」，不是「只算一次共用一份」
+- 回调表以 `sessionID` 为键、值为 `Set<request>`：同一会话同时挂载输入框底部单行与侧边栏区块时，两个组件的回调并存而互不覆盖
+
+### displayWidth 的已知边界
+
+`displayWidth` 是一张**简化**的宽字符表（CJK 标点 / 扩展汉字 / CJK 基本区 / 全角字符 / 全角符号 / 基本平面以上码点按 2 列，其余 1 列），不是完整的 East Asian Width 表
+
+- 中文、全角、Emoji 计算正确
+- 韩文、注音、部分符号修饰符会偏 1 列，`labels` 里用了这类字符时值列可能看起来没对齐
+- 嫌对齐难看就直接 `sidebarAlign: false`，代价是每行长度参差
+
+---
+
+## 八、标题行缓冲动画图标
+
+侧边栏区块的标题行右侧有一个 braille 点阵动画，用它指示会话是否活跃
+
+### 帧表与节拍
+
+- 10 帧：`⠋ ⠙ ⠹ ⠸ ⠼ ⠴ ⠦ ⠧ ⠇ ⠏`
+- **100ms 一帧**，由一个**独立的** `setInterval` 驱动
+- **不复用** 250ms 的指标节拍：10 帧动画按 250ms 走，每拍要跳 2~3 格，看起来是卡顿而不是动画
+- `sidebarSpinner: false` 时**整个定时器都不启动**，连同节点一起省掉
+
+### 摆位与显隐
+
+标题行外层 box 是 `width="100%"` + `justifyContent="space-between"`，内部左右两区：
+
+- **左区**：折叠箭头 + 标题 + 折叠摘要
+- **右区**：spinner 的 `<text>`，固定 `width={2}`
+
+固定 2 列是有原因的：braille 字符属 East Asian **Ambiguous** 宽度，不同终端可能渲染成 1 列或 2 列，写死宽度才能吸收这个不确定性，否则窄侧边栏里会串行
+
+显隐用 `visible` 切换（与折叠机制同一个手段），不是留空串或空格占位
+
+### 空闲门控
+
+100ms 定时器每次跳帧先遍历侧边栏登记表，**没有任何实例活跃就直接 return**，既不写节点也不 `requestRender`。否则挂机状态下会每 100ms 白烧一次重绘
+
+### 与灰色文本的分工
+
+侧边栏区块里**所有标签与数值全程灰色**（`theme.textMuted`），只有标题行用 `theme.text`。也就是说：
+
+> 侧边栏的**工作状态由动画图标表达，不再由文字颜色表达**
+
+`colorize` 只作用于输入框底部那行单块文本。两侧的活动态取的是**同一个 `readout.active`**，所以图标转的时候底部那行也是白的，两边不会出现判断打架
+
+---
+
+## 九、悬挂引用与资源回收
+
+侧边栏区块与输入框底部单行各自持有节点引用，登记在三张按 `sessionID` 建键的模块级表里：`painters`（刷新回调 Set）、`sidebarControllers`（折叠控制器）、`sidebarTitles`（spinner 登记）
+
+### 问题一：确定泄漏
+
+`session.deleted` 处理器原先只删 `sidebarControllers` 与 `sidebarTitles`，**没有删 `painters`**，而 `painters` 只在插件销毁时整体 `clear()`
+
+后果：每删除一个会话，它的 `Set<request>` 永久留下，集合里每个闭包还抓着已卸载组件的节点对象。而 `requestAll()` 每 250ms 遍历全部 painter 调一遍，于是**每个已卸载组件仍在每 250ms 触发一次 `buildReadout()` + 节点写入 + `requestRender()`**。会话开删越勤，累积越久
+
+### 修复一：先广播，后摘除
+
+`session.deleted` 里的顺序不能反：
+
+1. `requestAll(true)` 先广播一次 —— 此时 painter 仍在表里，界面能把该会话刷新成占位回落
+2. 再删三张表的键
+
+反过来先删的话，删除事件本身刷不成占位回落，界面会停在删除前的旧读数上
+
+### 问题二：悬挂节点
+
+opentui 的 `ref` 回调**不提供 unmount 通知**，所以组件被「切换会话 / 收起侧边栏」这类路径卸载时（没走 `session.deleted`），三张表里的条目会残留，帧定时器会往已脱离渲染树的死节点写内容
+
+### 修复二：isDestroyed 兜底回收
+
+`pruneDestroyed()` 在 250ms 指标节拍与 100ms 帧定时器里各调一次，剔除已销毁组件的登记；某会话回调清空后连键一起摘掉
+
+判据来自 opentui 的 `Renderable.isDestroyed` 公共 getter —— 节点被 `destroyRecursively()` 拆除时该标志置 `true`
+
+**保守降级（这条决定了行为边界）**：判据严格取 `isDestroyed === true`，`undefined` 一律按存活处理。因为 opentui 并非在所有卸载路径下都会置这个标志，判据缺失时**宁可少回收、也绝不误删活着的组件**

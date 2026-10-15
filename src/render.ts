@@ -19,6 +19,12 @@ export type FieldEntry = {
 	value: string;
 };
 
+/** VAR 侧边栏区块的排版选项 */
+export type SidebarLayout = {
+	indent: string;
+	align: boolean;
+};
+
 // ===== ===== ===== ===== [导出方法] ===== ===== ===== =====
 
 /**
@@ -131,5 +137,118 @@ export function composeLine(entries: FieldEntry[], config: ResolvedConfig): stri
 export function buildLine(readout: Readout, config: ResolvedConfig): string {
 	// STEP 按配置字段顺序取值后拼接
 	return composeLine(config.items.map((field) => ({ field, value: fieldValue(field, readout, config) })), config);
+
+}
+
+/**
+ * 计算文本的终端显示宽度：CJK 与全角字符按 2 列计，其余按 1 列计
+ * </br>按码点遍历而非 UTF-16 码元，代理对 (Emoji 与扩展汉字) 才会算成一列宽的两列
+ * @param {string} text 待测量的文本
+ * @return {number} width 终端显示列数
+ * @author DeepSeek_V4_Flash
+ * @date 2026-09-11
+ * @note note
+ */
+export function displayWidth(text: string): number {
+	// VAR 累计列数，逐码点累加
+	let width = 0;
+
+	// STEP for...of 遍历的是码点，代理对不会被拆成两个半截字符
+	for (const char of text) {
+		// VAR 当前码点
+		const code = char.codePointAt(0) ?? 0;
+
+		// BRANCH CJK 标点、全角标点、全角字符与扩展汉字按 2 列计
+		if (code >= 0x3000 && code <= 0x303f) {
+			width = width + 2;
+			continue;
+		}
+
+		// BRANCH 扩展汉字区 (A / B / C / D 统一表意文字扩展 A) 按 2 列计
+		if (code >= 0x3400 && code <= 0x4dbf) {
+			width = width + 2;
+			continue;
+		}
+
+		// BRANCH CJK 统一表意文字基本区按 2 列计
+		if (code >= 0x4e00 && code <= 0x9fff) {
+			width = width + 2;
+			continue;
+		}
+
+		// BRANCH 全角字符区按 2 列计
+		if (code >= 0xff01 && code <= 0xff60) {
+			width = width + 2;
+			continue;
+		}
+
+		// BRANCH 全角符号区按 2 列计
+		if (code >= 0xffe0 && code <= 0xffe6) {
+			width = width + 2;
+			continue;
+		}
+
+		// BRANCH 基本平面以外的码点 (Emoji、扩展汉字等) 按 2 列计
+		if (code > 0xffff) {
+			width = width + 2;
+			continue;
+		}
+
+		// STEP 其余字符按 1 列计
+		width = width + 1;
+
+	}
+
+	// STEP 返回累计列数
+	return width;
+
+}
+
+/**
+ * 把字段项渲染成侧边栏区块的多行文本 (每字段一行)
+ * </br>align 开启时按最长显示名列右对齐值列，CJK 宽度按 displayWidth 计
+ * @param {FieldEntry[]} entries 字段项，顺序即展示顺序
+ * @param {ResolvedConfig} config 配置
+ * @param {SidebarLayout} layout 排版选项：行首缩进与是否对齐值列
+ * @return {string[]} lines 每字段一行的文本数组，不含标题行
+ * @author DeepSeek_V4_Flash
+ * @date 2026-09-11
+ * @note note
+ */
+export function composeSidebarLines(entries: FieldEntry[], config: ResolvedConfig, layout: SidebarLayout): string[] {
+	// STEP hideEmpty 开启时先滤掉无数据字段，与 composeLine 保持同一语义
+	const kept = config.hideEmpty ? entries.filter((item) => (! isMissing(item.field, item.value))) : entries;
+
+	// STEP 取各字段的显示名并做占位替换，渲染层只管拼行不碰数值口径
+	const labels = kept.map((item) => config.labels[item.field]);
+	const values = kept.map((item) => displayValue(item.field, item.value, config));
+
+	// VAR 值列起始前的标签列宽，对齐关闭时不参与计算
+	let labelWidth = 0;
+
+	// STEP 对齐开启时先扫一遍取最长显示名的显示宽度
+	if (layout.align) {
+		for (const label of labels) {
+			const width = displayWidth(label);
+			if (width > labelWidth) labelWidth = width;
+		}
+	}
+
+	// STEP 逐行拼接：缩进 + 显示名 + 对齐补白 + 分隔空格 + 值
+	const lines: string[] = [];
+	for (let index = 0; index < kept.length; index = index + 1) {
+		// PART 对齐关闭时只用一个空格分隔，避免右侧拖出长短不齐的空白
+		if (! layout.align) {
+			lines.push(`${layout.indent}${labels[index]} ${values[index]}`);
+			continue;
+		}
+
+		// PART 对齐开启时按显示宽度补齐标签列，中文标签不会被撑散
+		const pad = " ".repeat(Math.max(0, labelWidth - displayWidth(labels[index])));
+		lines.push(`${layout.indent}${labels[index]}${pad} ${values[index]}`);
+	}
+
+	// STEP 返回行数组，全字段被过滤时为空数组
+	return lines;
 
 }

@@ -6,7 +6,7 @@
  * @note note
  */
 
-import { formatCount, formatDuration, formatRate } from "../src/format.js";
+import { EMPTY, formatCount, formatDuration, formatRate } from "../src/format.js";
 import { resolveConfig } from "../src/config.js";
 import {
 	buildReadout,
@@ -18,7 +18,8 @@ import {
 	noteTextDelta,
 	noteUserMessage,
 } from "../src/metrics.js";
-import { buildLine, displayValue, fieldValue } from "../src/render.js";
+import { composeSidebarLines, buildLine, displayValue, displayWidth, fieldValue } from "../src/render.js";
+import type { FieldEntry } from "../src/render.js";
 
 // ===== ===== ===== ===== [常量] ===== ===== ===== =====
 
@@ -294,6 +295,94 @@ noteAssistantFinished(live, "ses_live", "msg_0", {
 });
 const settledReadout = buildReadout(live, "ses_live", 1000, config);
 check("完成后权威值接管 (不被估算峰值顶住)", fieldValue("TOKEN", settledReadout, config), "380");
+
+// ===== ===== ===== ===== [区段五：侧边栏区块与展示位置] ===== ===== ===== =====
+
+// STEP 显示宽度：ASCII 按 1 列，CJK / 全角 / 代理对按 2 列
+
+console.log("== displayWidth 显示宽度 ==");
+check("ascii 单列", displayWidth("abc"), 3);
+check("中文双列", displayWidth("指标"), 4);
+check("时钟符号双列", displayWidth("⏱️"), 2);
+check("中西混排", displayWidth("a中b"), 4);
+check("Emoji 代理对双列", displayWidth("😀"), 2);
+
+// STEP 展示位置归一化：去重、丢弃未知位置、保持顺序、空结果回落默认全开
+
+console.log("== locations 展示位置 ==");
+check("locations 默认全开", resolveConfig(undefined).locations.join(","), "prompt,sidebar");
+check("locations 单选生效", resolveConfig({ locations: ["sidebar"] }).locations.join(","), "sidebar");
+check("locations 空数组回落默认", resolveConfig({ locations: [] }).locations.join(","), "prompt,sidebar");
+check("locations 未知位置回落默认", resolveConfig({ locations: ["nope"] }).locations.join(","), "prompt,sidebar");
+check("locations 去重", resolveConfig({ locations: ["prompt", "prompt"] }).locations.join(","), "prompt");
+check("locations 保持用户顺序", resolveConfig({ locations: ["sidebar", "prompt"] }).locations.join(","), "sidebar,prompt");
+check("locations 非数组回落默认", resolveConfig({ locations: "prompt" }).locations.join(","), "prompt,sidebar");
+
+// STEP 侧边栏区块选项：默认值、合法覆盖与非法回落
+
+console.log("== 侧边栏区块配置 ==");
+check("sidebarSlot 默认 content", resolveConfig(undefined).sidebarSlot, "content");
+check("sidebarSlot=footer 生效", resolveConfig({ sidebarSlot: "footer" }).sidebarSlot, "footer");
+check("sidebarSlot 非法回落 content", resolveConfig({ sidebarSlot: "nope" }).sidebarSlot, "content");
+check("sidebarCollapsed 默认不折叠", resolveConfig(undefined).sidebarCollapsed, false);
+check("sidebarCollapsed=true 生效", resolveConfig({ sidebarCollapsed: true }).sidebarCollapsed, true);
+check("sidebarCollapsed 非布尔回落", resolveConfig({ sidebarCollapsed: 1 }).sidebarCollapsed, false);
+check("sidebarTitle 默认", resolveConfig(undefined).sidebarTitle, "METRICS");
+check("sidebarTitle 覆盖生效", resolveConfig({ sidebarTitle: "指标" }).sidebarTitle, "指标");
+check("sidebarTitle 空串回落", resolveConfig({ sidebarTitle: "" }).sidebarTitle, "METRICS");
+check("sidebarTitle 非字符串回落", resolveConfig({ sidebarTitle: 123 }).sidebarTitle, "METRICS");
+check("sidebarIndent 默认两空格", JSON.stringify(resolveConfig(undefined).sidebarIndent), '"  "');
+check("sidebarIndent 覆盖生效", resolveConfig({ sidebarIndent: "····" }).sidebarIndent, "····");
+check("sidebarIndent 空串表示不缩进", resolveConfig({ sidebarIndent: "" }).sidebarIndent, "");
+check("sidebarIndent 非字符串回落", resolveConfig({ sidebarIndent: 4 }).sidebarIndent, "  ");
+check("sidebarAlign 默认开", resolveConfig(undefined).sidebarAlign, true);
+check("sidebarAlign=false 生效", resolveConfig({ sidebarAlign: false }).sidebarAlign, false);
+check("sidebarAlign 非布尔回落开启", resolveConfig({ sidebarAlign: "no" }).sidebarAlign, true);
+check("sidebarSpinner 默认开", resolveConfig(undefined).sidebarSpinner, true);
+check("sidebarSpinner=false 生效", resolveConfig({ sidebarSpinner: false }).sidebarSpinner, false);
+check("sidebarSpinner 非布尔 0 回落开启", resolveConfig({ sidebarSpinner: 0 }).sidebarSpinner, true);
+check("sidebarSpinner 非布尔字符串回落开启", resolveConfig({ sidebarSpinner: "no" }).sidebarSpinner, true);
+check("sidebarSpinner null 回落开启", resolveConfig({ sidebarSpinner: null }).sidebarSpinner, true);
+
+// STEP 侧边栏多行渲染：关对齐单空格分隔，开对齐按显示宽度右对齐值列
+
+console.log("== composeSidebarLines 侧边栏区块 ==");
+/** CONST 侧边栏区块自检用的字段项：宽度不一致的显示名由 labeled 配置提供 */
+const sideEntries: FieldEntry[] = [
+	{ field: "TPS", value: "3.32" },
+	{ field: "TOKEN", value: "560" },
+];
+/** CONST 中文显示名配置：TOKEN 显示名只有 2 列宽，与 TPS 的 3 列不一致 */
+const sideConfig = resolveConfig({ labels: { TOKEN: "词" } });
+/** CONST 排版参数：两个空格缩进并开启值列对齐 */
+const sideLayout = { indent: "  ", align: true };
+
+// SUBSTEP 关对齐：每行形如 缩进 + 显示名 + 单空格 + 值
+
+const plainLines = composeSidebarLines(sideEntries, sideConfig, { indent: "  ", align: false });
+check("关对齐首行", plainLines[0], "  TPS 3.32");
+check("关对齐次行", plainLines[1], "  词 560");
+check("关对齐行数与字段数一致", plainLines.length, 2);
+
+// SUBSTEP 开对齐：中文显示名的 value 视觉起始列与 ASCII 显示名一致
+
+const alignedLines = composeSidebarLines(sideEntries, sideConfig, sideLayout);
+check("开对齐首行", alignedLines[0], "  TPS 3.32");
+check("开对齐次行补白", alignedLines[1], "  词  560");
+check("首行 value 起始列", displayWidth(alignedLines[0].slice(0, alignedLines[0].indexOf("3.32"))), 6);
+check("中文行 value 起始列与首行相同", displayWidth(alignedLines[1].slice(0, alignedLines[1].indexOf("560"))), 6);
+
+// SUBSTEP hideEmpty：无数据字段整行不出现，全过滤时返回空数组
+
+/** CONST 无数据字段项：EMPTY 即占位符 */
+const emptyEntries: FieldEntry[] = [
+	{ field: "TPS", value: "3.32" },
+	{ field: "TTFT", value: EMPTY },
+];
+check("hideEmpty 滤掉无数据行", composeSidebarLines(emptyEntries, resolveConfig({ hideEmpty: true }), sideLayout).join("|"), "  TPS 3.32");
+check("hideEmpty 关闭时用占位文本", composeSidebarLines(emptyEntries, resolveConfig({ emptyText: "0" }), sideLayout).join("|"), "  TPS  3.32|  TTFT 0");
+check("全字段被过滤返回空数组", composeSidebarLines([{ field: "TTFT", value: EMPTY }], resolveConfig({ hideEmpty: true }), sideLayout).length, 0);
+check("STS 不参与无数据过滤", composeSidebarLines([{ field: "STS", value: EMPTY }], resolveConfig({ hideEmpty: true }), sideLayout).join("|"), "  STS -");
 
 // ===== ===== ===== ===== [结果汇总] ===== ===== ===== =====
 

@@ -40,7 +40,17 @@
 					"retrying": "Retrying #{n}...",
 					"error": "Error",
 					"unknown": "-"
-				}
+				},
+				"locations": [
+					"prompt",
+					"sidebar"
+				],
+				"sidebarSlot": "content",
+				"sidebarCollapsed": false,
+				"sidebarTitle": "METRICS",
+				"sidebarIndent": "  ",
+				"sidebarAlign": true,
+				"sidebarSpinner": true
 			}
 		]
 	]
