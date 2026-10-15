@@ -1,9 +1,15 @@
 /**
  * 依赖与入口体检：把守三条踩过坑的硬规则
- * </br>规则一 插件目录不得存在 node_modules/@opentui：
- * 它会拉起第二份 @opentui/core，与宿主抢注册环境变量 OPENTUI_FORCE_WCWIDTH 并抛错
+ * </br>规则一 插件目录不得存在 node_modules/@opentui 或 node_modules/solid-js：
+ * 宿主的 Solid 转换插件用负向先行断言排除路径含 node_modules 的文件，那些文件不会被转换；
+ * 且第二份 @opentui/core 会与宿主抢注册环境变量 OPENTUI_FORCE_WCWIDTH 直接抛错，插件被静默丢弃
  * </br>规则二 入口文件不得出现来自 "solid-js" 的裸导入：
- * OpenCode 只重写 @opentui/solid 这类子路径 specifier，裸 specifier 走普通解析并失败
+ * 本插件全程命令式渲染，不需要响应式原语，禁掉是风格约束
+ * NOTE 更正（2026-10-15 核实）：宿主 @opentui/solid/runtime-plugin-support/configure.js 的
+ * 重写映射表里其实**包含** "solid-js" 与 "solid-js/store"，裸 specifier 会被改写到宿主那
+ * 唯一一份实例，**并非**「照常解析并失败」。OpenCode 内置的 MCP / LSP / Todo / Files
+ * 四个侧边栏区块自己就 import { createSignal, Show } from "solid-js"。
+ * 正则拦截刻意保留，只把描述改准确 —— 去留需要真机验证，不该凭源码推断就动安全闸门。
  * </br>规则三 入口必须是原始 .tsx，不能是预编译产物：
  * 宿主的 Solid 转换插件只跳过路径含 node_modules 的文件；本插件经 junction 加载时
  * 真实路径在 node_modules 之外，压缩过的 .js 会被转换器处理并直接崩掉
@@ -25,11 +31,33 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 /** CONST 污染要素数组，出现即判定为污染，插件会被 OpenCode 静默丢弃 */
 const POISON = [join("node_modules", "@opentui"), join("node_modules", "solid-js")];
 
-/** CONST 入口里绝不允许出现的裸 specifier，宿主不会重写它 */
+/** CONST 入口里不允许出现的裸 specifier；本插件用不到响应式原语，禁掉是风格约束（宿主实际会重写它，详见文件头 NOTE） */
 const BARE_SOLID = /from\s+"solid-js(\/[^"]*)?"/;
 
 /** CONST 入口允许的扩展名 */
 const ENTRY_SUFFIX = ".tsx";
+
+// ===== ===== ===== ===== [内部方法] ===== ===== ===== =====
+
+/**
+ * 剥掉块注释与行注释，只留真正的代码
+ * </br>规则二要拦的是代码里的裸导入语句，而注释里把 `from "solid-js"` 当反例引用是
+ * 合理的（例如文件头记录「这条规则曾被证伪」），不剥注释就会把说明文字一并拦下
+ * @param {string} text 源文件全文
+ * @return {string} code 去掉注释后的代码文本
+ * @author DeepSeek_V4_Flash
+ * @date 2026-10-15
+ * @note note
+ */
+function stripComments(text: string): string {
+	// STEP 先整体去掉块注释 (含 JSDoc)，正则容错未闭合的起始标记，避免误吞后续代码
+	let stripped = text.replace(/\/\*[\s\S]*?\*\//g, "");
+	stripped = stripped.replace(/\/\*[^*]*$/g, "");
+
+	// STEP 再去掉行注释，只砍掉第一个换行符之前的内容，保留换行以维持行边界
+	return stripped.replace(/\/\/[^\n]*/g, "");
+
+}
 
 // ===== ===== ===== ===== [逻辑代码] ===== ===== ===== =====
 
@@ -75,9 +103,11 @@ if (typeof entry !== "string") {
 	} else {
 		// PART 检查裸 solid-js 导入 (规则二)
 		const text = readFileSync(entryPath, "utf8");
-		if (BARE_SOLID.test(text)) {
+		// SUBSTEP 先剥掉块注释与行注释再匹配：规则二要拦的是**代码里的**导入语句，
+		// 注释里引用 `from "solid-js"` 作为反例说明是合理的，不该被一并拦下
+		if (BARE_SOLID.test(stripComments(text))) {
 			failed = failed + 1;
-			console.log(`[FAIL ] ${entry} 里出现了裸 "solid-js" 导入，宿主不会重写它`);
+			console.log(`[FAIL ] ${entry} 里出现了裸 "solid-js" 导入，本插件用不到响应式原语，禁掉是风格约束`);
 			
 		} else {
 			console.log(`[PASS ] ${entry} 无裸 solid-js 导入`);

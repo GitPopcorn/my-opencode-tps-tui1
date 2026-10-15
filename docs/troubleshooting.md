@@ -124,3 +124,31 @@ TUI 插件的加载失败不留任何痕迹，所以出问题时要主动把槽�
 - 250ms 指标节拍与 100ms 帧定时器每次都会调 `pruneDestroyed()`，按 opentui 的 `isDestroyed` 兜底回收已销毁组件；判据缺失时一律按存活处理，宁可少回收也不误删活组件
 
 自查方法：频繁开关一批会话，如果卡顿不再随会话数线性增长，说明这条已经生效。若仍然复现，先设 `locations: ["prompt"]` 只留输入框底部那行做对照——侧边栏区块整个不注册，能立刻排除它是不是元凶
+
+### 插件「完全没加载」，且日志与 stderr 都干净
+
+这是最费时间的一类现象：**加载失败不进日志、不进 stderr，插件被静默丢弃**
+
+真正致命的原因只有一个：**插件目录装出了 `node_modules`**
+
+- 宿主 `packages/opencode/src/plugin/tui/runtime.ts` 会调 `ensureRuntimePluginSupport({ additional: keymapRuntimeModules })`，把若干 specifier 装进 Bun 运行时插件的重写映射表
+- 同一套机制里的源过滤器是 `/^(?!.*[/\\]node_modules[/\\]).*\.[cm]?[jt]sx?$/` —— 用**负向先行断言排除** `node_modules` 路径。被排除的文件**不会**被 Solid 转换
+- 若插件目录里有自己的 `node_modules`，第二份 `@opentui/core` 会与宿主抢注环境变量 `OPENTUI_FORCE_WCWIDTH`，直接抛错
+
+处置：`bun run check-deps` 会体检 `node_modules/@opentui` 与 `node_modules/solid-js`，命中就删（`rd /s /q "node_modules\@opentui"`）
+
+另外入口必须是**原始 `.tsx`**：转换器同样只跳过 `node_modules` 内的文件，本插件经 junction 加载时真实路径在 `node_modules` 之外，压缩过的 `.js` 会被转换器处理并直接崩掉。`package.json` 的 `exports["./tui"]` 指向 `.tsx` 即可
+
+### 一条已更正的旧结论：「绝不能用裸 `solid-js` 导入」
+
+`check-deps.ts` 规则二会拦截入口里的 `from "solid-js"`。这条拦截**仍然保留**，但它原先的**理由是错的**，已于 2026-10-15 更正
+
+**原说法**：OpenCode 只重写 `@opentui/solid` 这类子路径 specifier，裸 specifier 会照常解析并失败，因此裸导入会让插件被静默丢弃
+
+**实际情况**：宿主 `@opentui/solid/runtime-plugin-support/configure.js` 的重写映射表里**确实包含** `"solid-js"` 与 `"solid-js/store"`，裸 specifier 会被改写到宿主那唯一一份实例。OpenCode 内置的 MCP / LSP / Todo / Files 四个侧边栏区块自己就写着 `import { createSignal, Show } from "solid-js"`
+
+**所以**：真正的危险只有「插件目录装出 `node_modules`」，与裸 specifier 无关
+
+**为什么拦截还留着**：本插件全程命令式渲染，用不到 `createSignal` / `createMemo` / `Show` / `For`，禁掉是**风格约束**。是否放宽这条闸门需要真机验证（真跑一次 TUI 确认插件加载与交互都正常），不该只凭读源码就改，所以先把描述改准确、去留待定
+
+如果你将来想用响应式原语写侧边栏区块：先在一个测试分支里放开规则二、装一个正常运行的 TUI 实跑一遍，确认插件不再被静默丢弃再合并

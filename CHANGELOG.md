@@ -28,6 +28,7 @@
 - 修复 `session.deleted` 未回收 `painters` 导致的累积泄漏：已卸载组件的回调原先会永久留在表里，每 250ms 触发一次 `buildReadout()` + 节点写入 + `requestRender()`，会话开删越勤累积越久。现在删除会话时先广播一次再摘除登记，界面能正常刷成占位回落
 - 修复组件经「切换会话 / 收起侧边栏」等非 `session.deleted` 路径卸载后的悬挂引用：opentui 的 `ref` 不提供 unmount 通知，登记表条目会残留。现在按节点的 `isDestroyed` 在两个定时器里兜底回收，判据缺失时一律按存活处理，宁可少回收也不误删活组件
 - 修复缓冲动画图标空闲时的空转：跳帧前先判断是否有活跃实例，无人活跃时不写节点也不请求重绘
+- 更正一条长期存在的错误结论：`tui.tsx` 文件头与 `scripts/check-deps.ts` 规则二原先称「裸 `solid-js` 导入会被静默丢弃」，实测宿主 `@opentui/solid/runtime-plugin-support/configure.js` 的重写映射表**包含** `"solid-js"` 与 `"solid-js/store"`，裸 specifier 会被改写到宿主唯一实例（OpenCode 内置 MCP / LSP / Todo / Files 四个侧边栏区块自己就是这么写的）。真正致命的只有「插件目录装出 `node_modules`」。本次**只更正注释与文档描述，`check-deps.ts` 的正则拦截刻意保留**——本插件全程命令式渲染，禁掉是风格约束，去留需真机验证
 
 ## [1.1.0] - 2026-09-11
 

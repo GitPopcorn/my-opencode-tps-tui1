@@ -21,10 +21,27 @@
  *     <li>动画图标另有独立的 100ms 帧节拍，与 250ms 指标节拍互不干扰；没有活动实例时整拍跳过</li>
  *     <li>折叠态持久化到 api.kv，命令面板提供切换命令并带默认键位</li>
  * </ul>
- * </br>WARN 本文件绝不能出现来自 "solid-js" 的裸导入：
- * OpenCode 只重写 @opentui/solid 这类子路径 specifier，裸 specifier 会照常解析；
- * 而插件目录一旦装出 node_modules，@opentui/solid 会拉起第二份 @opentui/core，
- * 与宿主抢注环境变量 OPENTUI_FORCE_WCWIDTH 直接抛错，插件会被静默丢弃
+ * </br>WARN 本插件全程采用命令式渲染，不使用 Solid 响应式原语
+ * （createSignal / createMemo / Show / For 一律不写）：
+ * <ul>
+ *     <li><b>真正致命的是插件目录装出 <code>node_modules</code></b>。宿主的 Solid 转换插件
+ *     用负向先行断言排除路径含 <code>node_modules</code> 的文件，那些文件不会被转换；
+ *     同时第二份 <code>@opentui/core</code> 会与宿主抢注环境变量 <code>OPENTUI_FORCE_WCWIDTH</code>
+ *     直接抛错，插件被静默丢弃（不进日志、不进 stderr）</li>
+ *     <li>本仓库的 <code>scripts/check-deps.ts</code> 会拦截 node_modules/@opentui 与
+ *     node_modules/solid-js，务必让 <code>bun run check-deps</code> 保持通过</li>
+ * </ul>
+ * </br>NOTE 关于 "solid-js" 裸导入的一条更正（2026-10-15 核实，勿再照旧结论）：
+ * <ul>
+ *     <li>宿主 <code>@opentui/solid/runtime-plugin-support/configure.js</code> 的重写映射表里
+ *     <b>确实包含 <code>"solid-js"</code> 与 <code>"solid-js/store"</code></b>，裸 specifier
+ *     会被改写到宿主那唯一一份实例，<b>不是</b>「照常解析并失败」。OpenCode 内置的
+ *     MCP / LSP / Todo / Files 四个侧边栏区块自己就写
+ *     <code>import { createSignal, Show } from "solid-js"</code></li>
+ *     <li>所以本文件头原先那句「绝不能出现裸导入」的表述是错的，已更正。
+ *     <code>check-deps.ts</code> 规则二的正则拦截<b>刻意保留</b>，只是把注释改成准确描述 ——
+ *     去留拦截需要真机验证，不该只凭源码推断就动安全闸门</li>
+ * </ul>
  * @author DeepSeek_V4_Flash
  * @date 2026-09-11
  * @note note
