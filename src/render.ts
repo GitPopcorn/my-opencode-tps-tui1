@@ -63,7 +63,7 @@ export function fieldValue(field: FieldName, readout: Readout, config: ResolvedC
 		default:
 			return EMPTY;
 	}
-
+	
 }
 
 /**
@@ -79,10 +79,10 @@ export function fieldValue(field: FieldName, readout: Readout, config: ResolvedC
 function isMissing(field: FieldName, value: string): boolean {
 	// BRANCH STS 不参与判定
 	if (field === "STS") return false;
-
+	
 	// STEP 其余字段以占位符为无数据标志
 	return value === EMPTY;
-
+	
 }
 
 /**
@@ -99,10 +99,10 @@ function isMissing(field: FieldName, value: string): boolean {
 export function displayValue(field: FieldName, value: string, config: ResolvedConfig): string {
 	// BRANCH 有数据原样透传
 	if (! isMissing(field, value)) return value;
-
+	
 	// STEP 无数据替换为占位文本
 	return config.emptyText;
-
+	
 }
 
 /**
@@ -119,10 +119,10 @@ export function displayValue(field: FieldName, value: string, config: ResolvedCo
 export function composeLine(entries: FieldEntry[], config: ResolvedConfig): string {
 	// STEP hideEmpty 开启时先滤掉无数据字段
 	const kept = config.hideEmpty ? entries.filter((item) => (! isMissing(item.field, item.value))) : entries;
-
+	
 	// STEP 逐项做占位替换后用分隔符拼接成单块文本，前缀取 labels 显示名而非字段名
 	return kept.map((item) => `${config.labels[item.field]} ${displayValue(item.field, item.value, config)}`).join(` ${config.separator} `);
-
+	
 }
 
 /**
@@ -137,7 +137,7 @@ export function composeLine(entries: FieldEntry[], config: ResolvedConfig): stri
 export function buildLine(readout: Readout, config: ResolvedConfig): string {
 	// STEP 按配置字段顺序取值后拼接
 	return composeLine(config.items.map((field) => ({ field, value: fieldValue(field, readout, config) })), config);
-
+	
 }
 
 /**
@@ -152,56 +152,56 @@ export function buildLine(readout: Readout, config: ResolvedConfig): string {
 export function displayWidth(text: string): number {
 	// VAR 累计列数，逐码点累加
 	let width = 0;
-
+	
 	// STEP for...of 遍历的是码点，代理对不会被拆成两个半截字符
 	for (const char of text) {
 		// VAR 当前码点
 		const code = char.codePointAt(0) ?? 0;
-
+		
 		// BRANCH CJK 标点、全角标点、全角字符与扩展汉字按 2 列计
 		if (code >= 0x3000 && code <= 0x303f) {
 			width = width + 2;
 			continue;
 		}
-
+		
 		// BRANCH 扩展汉字区 (A / B / C / D 统一表意文字扩展 A) 按 2 列计
 		if (code >= 0x3400 && code <= 0x4dbf) {
 			width = width + 2;
 			continue;
 		}
-
+		
 		// BRANCH CJK 统一表意文字基本区按 2 列计
 		if (code >= 0x4e00 && code <= 0x9fff) {
 			width = width + 2;
 			continue;
 		}
-
+		
 		// BRANCH 全角字符区按 2 列计
 		if (code >= 0xff01 && code <= 0xff60) {
 			width = width + 2;
 			continue;
 		}
-
+		
 		// BRANCH 全角符号区按 2 列计
 		if (code >= 0xffe0 && code <= 0xffe6) {
 			width = width + 2;
 			continue;
 		}
-
+		
 		// BRANCH 基本平面以外的码点 (Emoji、扩展汉字等) 按 2 列计
 		if (code > 0xffff) {
 			width = width + 2;
 			continue;
 		}
-
+		
 		// STEP 其余字符按 1 列计
 		width = width + 1;
-
+		
 	}
-
+	
 	// STEP 返回累计列数
 	return width;
-
+	
 }
 
 /**
@@ -218,14 +218,14 @@ export function displayWidth(text: string): number {
 export function composeSidebarLines(entries: FieldEntry[], config: ResolvedConfig, layout: SidebarLayout): string[] {
 	// STEP hideEmpty 开启时先滤掉无数据字段，与 composeLine 保持同一语义
 	const kept = config.hideEmpty ? entries.filter((item) => (! isMissing(item.field, item.value))) : entries;
-
+	
 	// STEP 取各字段的显示名并做占位替换，渲染层只管拼行不碰数值口径
 	const labels = kept.map((item) => config.labels[item.field]);
 	const values = kept.map((item) => displayValue(item.field, item.value, config));
-
+	
 	// VAR 值列起始前的标签列宽，对齐关闭时不参与计算
 	let labelWidth = 0;
-
+	
 	// STEP 对齐开启时先扫一遍取最长显示名的显示宽度
 	if (layout.align) {
 		for (const label of labels) {
@@ -233,7 +233,7 @@ export function composeSidebarLines(entries: FieldEntry[], config: ResolvedConfi
 			if (width > labelWidth) labelWidth = width;
 		}
 	}
-
+	
 	// STEP 逐行拼接：缩进 + 显示名 + 对齐补白 + 分隔空格 + 值
 	const lines: string[] = [];
 	for (let index = 0; index < kept.length; index = index + 1) {
@@ -242,13 +242,13 @@ export function composeSidebarLines(entries: FieldEntry[], config: ResolvedConfi
 			lines.push(`${layout.indent}${labels[index]} ${values[index]}`);
 			continue;
 		}
-
+		
 		// PART 对齐开启时按显示宽度补齐标签列，中文标签不会被撑散
 		const pad = " ".repeat(Math.max(0, labelWidth - displayWidth(labels[index])));
 		lines.push(`${layout.indent}${labels[index]}${pad} ${values[index]}`);
 	}
-
+	
 	// STEP 返回行数组，全字段被过滤时为空数组
 	return lines;
-
+	
 }

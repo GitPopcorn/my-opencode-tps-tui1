@@ -139,7 +139,7 @@ export type Readout = {
  */
 function freshTurn(): Turn {
 	return { tokens: 0, activeMs: 0, responses: 0, pendingBytes: 0, peakTokens: 0 };
-
+	
 }
 
 /**
@@ -151,7 +151,7 @@ function freshTurn(): Turn {
  */
 function freshCommitted(): Committed {
 	return { tokens: 0, activeMs: 0, wallMs: 0, ttftSumMs: 0, ttftCount: 0 };
-
+	
 }
 
 /**
@@ -174,7 +174,7 @@ function freshSession(): SessionMetrics {
 		errored: false,
 		seen: false,
 	};
-
+	
 }
 
 /**
@@ -188,10 +188,10 @@ function freshSession(): SessionMetrics {
 function turnWallMs(turn: Turn): number {
 	// BRANCH 起点或终点缺失时回落到生成时长
 	if (turn.requestStartAt === undefined || turn.lastCompletedAt === undefined) return turn.activeMs;
-
+	
 	// STEP 取端点差与生成时长的较大者，防止 wall 小于 activeMs
 	return Math.max(turn.lastCompletedAt - turn.requestStartAt, turn.activeMs);
-
+	
 }
 
 /**
@@ -209,13 +209,13 @@ function turnWallMs(turn: Turn): number {
 function liveWallMs(turn: Turn, now: number, running: boolean): number {
 	// BRANCH 非忙即结算完成，回落冻结口径
 	if (! running) return turnWallMs(turn);
-
+	
 	// BRANCH 缺起点时回落到生成时长
 	if (turn.requestStartAt === undefined) return turn.activeMs;
-
+	
 	// STEP 忙时用当前时间推算，并夹住不小于生成时长
 	return Math.max(now - turn.requestStartAt, turn.activeMs);
-
+	
 }
 
 /**
@@ -232,18 +232,18 @@ function commitTurn(session: SessionMetrics): void {
 	const turn = session.turn;
 	const empty = (turn.responses === 0) && (turn.tokens === 0) && (turn.ttftMs === undefined);
 	if (empty) return;
-
+	
 	// SUBSTEP 累加词元、生成时长与 wall 耗时
 	session.committed.tokens += turn.tokens;
 	session.committed.activeMs += turn.activeMs;
 	session.committed.wallMs += turnWallMs(turn);
-
+	
 	// SUBSTEP 有 TTFT 时累加均值分子与分母
 	if (! (turn.ttftMs === undefined)) {
 		session.committed.ttftSumMs += turn.ttftMs;
 		session.committed.ttftCount += 1;
 	}
-
+	
 }
 
 /**
@@ -260,10 +260,10 @@ function commitTurn(session: SessionMetrics): void {
 function turnClosed(turn: Turn): boolean {
 	// BRANCH 没有完成时间即未关闭
 	if (turn.lastCompletedAt === undefined) return false;
-
+	
 	// STEP 有完成时间且非工具续跑才算关闭
 	return turn.lastFinish !== "tool-calls";
-
+	
 }
 
 /**
@@ -277,12 +277,12 @@ function turnClosed(turn: Turn): boolean {
 function rollTurn(session: SessionMetrics): void {
 	// STEP 结算旧轮进累计值
 	commitTurn(session);
-
+	
 	// STEP 重置单轮字段与最近一条消息、错误标记
 	session.turn = freshTurn();
 	session.lastMessage = undefined;
 	session.errored = false;
-
+	
 }
 
 /**
@@ -297,16 +297,16 @@ function rollTurn(session: SessionMetrics): void {
 function calibrate(session: SessionMetrics, ratio: number): void {
 	// STEP 非法比例直接忽略
 	if (! Number.isFinite(ratio) || ratio <= 0) return;
-
+	
 	// STEP 比例夹进允许区间
 	const clamped = Math.min(Math.max(ratio, MIN_BYTES_PER_TOKEN), MAX_BYTES_PER_TOKEN);
-
+	
 	// SUBSTEP 指数平滑，避免单条消息把比例带偏；首次直接采纳
 	session.bytesPerToken = session.calibrated
 		? (session.bytesPerToken * (1 - CALIBRATION_WEIGHT)) + (clamped * CALIBRATION_WEIGHT)
 		: clamped;
 	session.calibrated = true;
-
+	
 }
 
 /**
@@ -322,23 +322,23 @@ function liveRate(session: SessionMetrics, now: number): number | undefined {
 	// STEP 取当前窗口，无窗口即无实时读数
 	const window = session.live;
 	if (window === undefined) return undefined;
-
+	
 	// SUBSTEP 计算窗口已持续时长
 	const elapsed = now - window.since;
-
+	
 	// BRANCH 累计不足最小观测时长或无字节时不出读数
 	if (elapsed < LIVE_MIN_MS || window.bytes <= 0) return undefined;
-
+	
 	// BRANCH 超过窗口宽度即过期：回收窗口并返回空
 	if (elapsed > STREAM_WINDOW_MS) {
 		delete session.live;
 		return undefined;
 	}
-
+	
 	// SUBSTEP 按当前校准比例把字节折算成词元并除以秒数
 	const tokens = Math.ceil(window.bytes / session.bytesPerToken);
 	return tokens / (elapsed / 1000);
-
+	
 }
 
 /**
@@ -354,23 +354,23 @@ function liveRate(session: SessionMetrics, now: number): number | undefined {
 function statusText(session: SessionMetrics, config: ResolvedConfig, streaming: boolean): string {
 	// STEP 取文案表
 	const text = config.sts;
-
+	
 	// BRANCH 错误标记优先级最高
 	if (session.errored) return text.error;
-
+	
 	// BRANCH 重试：把 {n} 替换为实际次数，缺失按第 1 次
 	if (session.status === "retry") {
 		const attempt = session.retryAttempt === undefined ? 1 : session.retryAttempt;
 		return text.retrying.replace("{n}", String(attempt));
 	}
-
+	
 	// BRANCH 忙：区分吐字中的 Streaming 与等待首字的 Waiting
 	if (session.status === "busy") return streaming ? text.streaming : text.waiting;
-
+	
 	// BRANCH 空闲与未知兜底
 	if (session.status === "idle") return text.idle;
 	return text.unknown;
-
+	
 }
 
 // ===== ===== ===== ===== [导出方法] ===== ===== ===== =====
@@ -384,7 +384,7 @@ function statusText(session: SessionMetrics, config: ResolvedConfig, streaming: 
  */
 export function freshState(): MetricsState {
 	return { sessions: {} };
-
+	
 }
 
 /**
@@ -400,12 +400,12 @@ export function getSession(state: MetricsState, sessionID: string): SessionMetri
 	// BRANCH 已存在直接复用
 	const existing = state.sessions[sessionID];
 	if (! (existing === undefined)) return existing;
-
+	
 	// STEP 不存在则创建并登记
 	const created = freshSession();
 	state.sessions[sessionID] = created;
 	return created;
-
+	
 }
 
 /**
@@ -419,7 +419,7 @@ export function getSession(state: MetricsState, sessionID: string): SessionMetri
  */
 export function forgetSession(state: MetricsState, sessionID: string): void {
 	delete state.sessions[sessionID];
-
+	
 }
 
 /**
@@ -439,19 +439,19 @@ export function forgetSession(state: MetricsState, sessionID: string): void {
 export function noteUserMessage(state: MetricsState, sessionID: string, createdAt: number, messageID?: string): void {
 	const session = getSession(state, sessionID);
 	session.seen = true;
-
+	
 	// STEP 幂等：重复投递的 user 消息完全忽略
 	if (! (messageID === undefined)) {
 		if (session.userMessages.has(messageID)) return;
 		session.userMessages.add(messageID);
 	}
-
+	
 	// BRANCH 只有上一轮真正关闭才结算开新轮；轮进行中绝不清
 	if (turnClosed(session.turn)) rollTurn(session);
-
+	
 	// STEP 锚定本轮请求起点 (首次到达的 user 消息时间)
 	if (session.turn.requestStartAt === undefined) session.turn.requestStartAt = createdAt;
-
+	
 }
 
 /**
@@ -468,10 +468,10 @@ export function noteUserMessage(state: MetricsState, sessionID: string, createdA
 export function noteAssistantStarted(state: MetricsState, sessionID: string, messageID: string, createdAt: number): void {
 	const session = getSession(state, sessionID);
 	session.seen = true;
-
+	
 	// BRANCH 上一轮已真正关闭 (非工具续跑) → 本条是新一轮的第一条消息，先结算开新轮
 	if (turnClosed(session.turn)) rollTurn(session);
-
+	
 	// SUBSTEP 登记消息计时明细，重复 started 事件保留先到的时间点
 	const existing = session.timing[messageID];
 	session.timing[messageID] = {
@@ -481,10 +481,10 @@ export function noteAssistantStarted(state: MetricsState, sessionID: string, mes
 		lastToolCallAt: existing === undefined ? undefined : existing.lastToolCallAt,
 		streamedBytes: existing === undefined ? 0 : existing.streamedBytes,
 	};
-
+	
 	// NOTE 插件可能在中途加载，用消息自身创建时间兜底本轮起点
 	if (session.turn.requestStartAt === undefined) session.turn.requestStartAt = createdAt;
-
+	
 }
 
 /**
@@ -502,34 +502,34 @@ export function noteAssistantStarted(state: MetricsState, sessionID: string, mes
 export function noteTextDelta(state: MetricsState, sessionID: string, messageID: string, at: number, bytes: number): void {
 	const session = getSession(state, sessionID);
 	const timing = session.timing[messageID];
-
+	
 	// BRANCH 已登记的消息才维护计时明细
 	if (! (timing === undefined)) {
 		// PART 首个增量锚定 firstTextAt，其后持续更新 lastTextAt 并累计字节
 		if (timing.firstTextAt === undefined) timing.firstTextAt = at;
 		timing.lastTextAt = at;
 		timing.streamedBytes += bytes;
-
+		
 		// PART 在飞字节累计：流式过程中 TOKEN 的实时估算来源，
 		// 消息完成后由权威词元替代 (见 noteAssistantFinished)
 		session.turn.pendingBytes += bytes;
-
+		
 		// PART 首字即锚定 TTFT，让流式期间也能实时看到 (完成时不再覆盖)
 		if (session.turn.ttftMs === undefined) {
 			session.turn.ttftMs = Math.max(timing.firstTextAt - timing.requestStartAt, 0);
 		}
 	}
-
+	
 	// STEP 维护滚动窗口，超过窗口宽度则重新开窗
 	const window = session.live;
 	if (window === undefined || (at - window.since) > STREAM_WINDOW_MS) {
 		session.live = { since: at, bytes };
 		return;
 	}
-
+	
 	// STEP 窗口有效则累加字节
 	window.bytes += bytes;
-
+	
 }
 
 /**
@@ -546,16 +546,16 @@ export function noteTextDelta(state: MetricsState, sessionID: string, messageID:
  */
 export function noteToolBoundary(state: MetricsState, sessionID: string, messageID: string, at: number): void {
 	const session = getSession(state, sessionID);
-
+	
 	// STEP 丢弃实时窗口，避免把工具停顿算成低 TPS
 	delete session.live;
-
+	
 	// SUBSTEP 已吐过字的消息记录最后一次工具调用时间，供工具续跑收尾用
 	const timing = session.timing[messageID];
 	if (! (timing === undefined)) {
 		if (! (timing.firstTextAt === undefined)) timing.lastToolCallAt = at;
 	}
-
+	
 }
 
 /** VAR noteAssistantFinished 的完成事件入参：用量、结束原因与错误标记 */
@@ -582,14 +582,14 @@ export type FinishInput = {
 export function noteAssistantFinished(state: MetricsState, sessionID: string, messageID: string, input: FinishInput): number {
 	const session = getSession(state, sessionID);
 	session.seen = true;
-
+	
 	// WARN 该事件会重复触发，必须去重，否则词元会被重复累加
 	if (session.finalized.has(messageID)) return 0;
 	session.finalized.add(messageID);
-
+	
 	// SUBSTEP 汇总权威词元数 (output + reasoning)
 	const tokens = input.outputTokens + input.reasoningTokens;
-
+	
 	// SUBSTEP 由计时明细推导生成时长与 TTFT
 	const timing = session.timing[messageID];
 	let activeMs = 0;
@@ -601,38 +601,38 @@ export function noteAssistantFinished(state: MetricsState, sessionID: string, me
 			: input.completedAt;
 		activeMs = Math.max(endAt - timing.firstTextAt, 1);
 		ttftMs = Math.max(timing.firstTextAt - timing.requestStartAt, 0);
-
+		
 		// PART 只对没有工具续跑的消息做自校准，避免工具参数词元混入比例
 		if (input.finish !== "tool-calls" && tokens > 0 && timing.streamedBytes > 0) {
 			calibrate(session, timing.streamedBytes / tokens);
 		}
 	}
-
+	
 	// SUBSTEP 累加进本轮聚合：词元、生成时长、响应数、完成锚点
 	session.turn.tokens += tokens;
 	session.turn.activeMs += activeMs;
 	session.turn.responses += 1;
 	session.turn.lastCompletedAt = input.completedAt;
 	session.turn.lastFinish = input.finish;
-
+	
 	// PART 权威值接管：在飞字节清零，峰值回落到权威累计，避免估算高估被永久保留
 	session.turn.pendingBytes = 0;
 	session.turn.peakTokens = session.turn.tokens;
-
+	
 	// PART 本轮 TTFT 尚未锚定时用本条消息的 TTFT 补上
 	if (! (ttftMs === undefined) && session.turn.ttftMs === undefined) session.turn.ttftMs = ttftMs;
-
+	
 	// SUBSTEP 记录最近一条消息读数并登记错误标记
 	session.lastMessage = { tokens, activeMs, ttftMs };
 	if (input.errored) session.errored = true;
-
+	
 	// SUBSTEP 清理计时明细与实时窗口
 	delete session.timing[messageID];
 	delete session.live;
-
+	
 	// STEP 返回本轮词元增量
 	return tokens;
-
+	
 }
 
 /**
@@ -648,18 +648,18 @@ export function noteAssistantFinished(state: MetricsState, sessionID: string, me
 export function noteStatus(state: MetricsState, sessionID: string, status: { type: string; attempt?: number }): void {
 	const session = getSession(state, sessionID);
 	session.seen = true;
-
+	
 	// BRANCH 状态机的三种取值：idle / busy / retry，其余值忽略
 	if (status.type === "idle" || status.type === "busy" || status.type === "retry") {
 		session.status = status.type;
 	}
-
+	
 	// STEP 重试态记录重试次数
 	if (status.type === "retry") session.retryAttempt = status.attempt;
-
+	
 	// STEP 忙态清除错误标记 (重新开始执行视为从错误恢复)
 	if (status.type === "busy") session.errored = false;
-
+	
 }
 
 /**
@@ -674,11 +674,11 @@ export function noteStatus(state: MetricsState, sessionID: string, status: { typ
  */
 export function noteIdle(state: MetricsState, sessionID: string): void {
 	const session = getSession(state, sessionID);
-
+	
 	// STEP 状态置 idle 并冻结实时窗口
 	session.status = "idle";
 	delete session.live;
-
+	
 }
 
 /**
@@ -693,11 +693,11 @@ export function noteIdle(state: MetricsState, sessionID: string): void {
 export function noteError(state: MetricsState, sessionID: string | undefined): void {
 	// BRANCH 缺会话 ID 直接忽略
 	if (sessionID === undefined) return;
-
+	
 	// STEP 登记错误标记
 	const session = getSession(state, sessionID);
 	session.errored = true;
-
+	
 }
 
 /**
@@ -717,55 +717,55 @@ export function buildReadout(state: MetricsState, sessionID: string, now: number
 	if (session === undefined) {
 		return { status: config.sts.unknown, streaming: false, active: false };
 	}
-
+	
 	// STEP 取实时速率 (开关关闭或窗口无效时为空)
 	const live = config.liveEstimate ? liveRate(session, now) : undefined;
-
+	
 	// SUBSTEP 本轮词元：已完成消息的权威值 + 在飞字节的估算，流式中取峰值防止回落，
 	// 消息完成后回到权威累计 (commitTurn / freshTurn 时峰值自然归零)
-
+	
 	// PART 在飞字节按当前校准比例折算成词元
 	const inflight = config.liveEstimate && session.turn.pendingBytes > 0
 		? Math.ceil(session.turn.pendingBytes / session.bytesPerToken)
 		: 0;
-
+		
 	// PART 峰值只升不降，防止流式估算回落
 	session.turn.peakTokens = Math.max(session.turn.peakTokens, session.turn.tokens + inflight);
-
+	
 	// PART 汇总累计值与本轮值
 	const totalTokens = session.committed.tokens + session.turn.peakTokens;
 	const totalActiveMs = session.committed.activeMs + session.turn.activeMs;
 	const turnActiveMs = session.turn.activeMs;
 	const turnTokens = session.turn.peakTokens;
-
+	
 	// STEP 单次读数：按 scope 决定取「本轮」还是「最近一条消息」
 	const useMessage = config.scope === "message" && ! (session.lastMessage === undefined);
 	const tokens = useMessage ? session.lastMessage!.tokens : turnTokens;
 	const ttftMs = useMessage ? session.lastMessage!.ttftMs : session.turn.ttftMs;
-
+	
 	// STEP TPS：有实时窗口用实时值，否则回落到本轮均值，避免空闲后显示占位符
 	let tps = live;
 	if (tps === undefined && turnActiveMs > 0 && turnTokens > 0) tps = turnTokens / (turnActiveMs / 1000);
-
+	
 	// STEP AVG_TPS：累计输出词元 / 累计生成时长
 	const avgTps = totalActiveMs > 0 && totalTokens > 0 ? totalTokens / (totalActiveMs / 1000) : undefined;
-
+	
 	// STEP AVG_TTFT：各轮 TTFT 的算术平均 (含进行中轮的当前 TTFT)
 	const currentTtft = session.turn.ttftMs;
 	const ttftSumMs = session.committed.ttftSumMs + (currentTtft === undefined ? 0 : currentTtft);
 	const ttftCount = session.committed.ttftCount + (currentTtft === undefined ? 0 : 1);
 	const avgTtftMs = ttftCount > 0 ? ttftSumMs / ttftCount : undefined;
-
+	
 	// STEP 耗时实时口径：忙时逐秒增长 (对齐 OpenChamber 等 Harness 的体验)，
 	// 结算后 (非 busy) 冻结在结算值；idle 挂机回来读到的就是定格值
 	const running = session.status === "busy";
 	const turnWall = liveWallMs(session.turn, now, running);
 	const durMs = useMessage ? session.lastMessage!.activeMs : turnWall;
 	const totalWallMs = session.committed.wallMs + turnWall;
-
+	
 	// STEP 会话从未见过消息时不展示零值占位
 	const showZeros = session.seen;
-
+	
 	// STEP 组装读数对象
 	return {
 		tps,
@@ -780,5 +780,5 @@ export function buildReadout(state: MetricsState, sessionID: string, now: number
 		streaming: live !== undefined,
 		active: running,
 	};
-
+	
 }

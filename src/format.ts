@@ -31,10 +31,10 @@ export const EMPTY = "-";
 export function formatCount(value: number | undefined, maxDecimals: number = 4): string {
 	// STEP 入数校验：非法值或负数返回占位符
 	if (! (typeof value === "number") || ! Number.isFinite(value) || value < 0) return EMPTY;
-
+	
 	// BRANCH 千以内直接给整数，无需缩写
 	if (value < 1000) return String(Math.round(value));
-
+	
 	// STEP 逐级缩小到 1000 以下，同时记录量级
 	let scaled = value;
 	let unit = 0;
@@ -42,21 +42,21 @@ export function formatCount(value: number | undefined, maxDecimals: number = 4):
 		scaled = scaled / 1000;
 		unit = unit + 1;
 	}
-
+	
 	// SUBSTEP 定点截断后去掉尾随零与孤立小数点
-
+	
 	// PART 以指定精度做定点格式化
 	let text = scaled.toFixed(maxDecimals);
-
+	
 	// PART 去掉尾随零与孤立小数点
 	if (text.includes(".")) {
 		text = text.replace(/0+$/, "");
 		text = text.replace(/\.$/, "");
 	}
-
+	
 	// STEP 拼接量级单位并返回
 	return text + COUNT_UNITS[unit];
-
+	
 }
 
 /**
@@ -71,26 +71,26 @@ export function formatCount(value: number | undefined, maxDecimals: number = 4):
 export function formatDuration(ms: number | undefined, secondPrecision: number = 2): string {
 	// STEP 入数校验：非法值或负数返回占位符
 	if (! (typeof ms === "number") || ! Number.isFinite(ms) || ms < 0) return EMPTY;
-
+	
 	// BRANCH 毫秒模式 (无小数点，不受精度影响)
 	if (ms < 1000) return `${Math.round(ms)}ms`;
-
+	
 	// SUBSTEP 换算总秒数供后续模式判定
 	const totalSeconds = ms / 1000;
-
+	
 	// BRANCH 秒模式，唯一允许小数的模式；精度为 0 时直接取整秒
 	if (totalSeconds < 60) return secondPrecision > 0 ? `${totalSeconds.toFixed(secondPrecision)}s` : `${Math.round(totalSeconds)}s`;
-
+	
 	// STEP 秒以上一律取整后再拆分
 	const whole = Math.round(totalSeconds);
 	const hours = Math.floor(whole / 3600);
 	const minutes = Math.floor((whole % 3600) / 60);
 	const seconds = whole % 60;
-
+	
 	// BRANCH 小时模式拼 h+m+s，否则拼 m+s
 	if (hours > 0) return `${hours}h${minutes}m${seconds}s`;
 	return `${minutes}m${seconds}s`;
-
+	
 }
 
 /**
@@ -105,10 +105,10 @@ export function formatDuration(ms: number | undefined, secondPrecision: number =
 export function formatRate(value: number | undefined): string {
 	// STEP 入数校验：非法值或非正数返回占位符
 	if (! (typeof value === "number") || ! Number.isFinite(value) || value <= 0) return EMPTY;
-
+	
 	// STEP 按数量级分档取小数位
 	if (value >= 100) return String(Math.round(value));
 	if (value >= 10) return value.toFixed(1);
 	return value.toFixed(2);
-
+	
 }

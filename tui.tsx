@@ -166,10 +166,10 @@ const sidebarControllers = new Map<string, SidebarController>()
 function isAlive(node: { isDestroyed?: boolean } | undefined): boolean {
 	// BRANCH 节点尚未捕获时无从判断，按存活处理，交给后续 ref 补齐
 	if (node === undefined) return true;
-
+	
 	// BRANCH 只有显式 true 才判定为已销毁，其余取值 (含 undefined / false) 均视为存活
 	return node.isDestroyed !== true;
-
+	
 }
 
 /**
@@ -185,14 +185,14 @@ function isAlive(node: { isDestroyed?: boolean } | undefined): boolean {
 function isAliveProbe(probe: (() => boolean) | undefined): boolean {
 	// BRANCH 没有探针：无从判断，按存活处理
 	if (probe === undefined) return true;
-
+	
 	// BRANCH 探针报错：按存活降级，宁可漏回收也不误删活着的组件
 	try {
 		return probe();
 	} catch {
 		return true;
 	}
-
+	
 }
 
 // ===== ===== ===== ===== [组件] ===== ===== ===== =====
@@ -432,7 +432,7 @@ function SidebarSection(props: {
 		setCollapsed,
 	}
 	sidebarControllers.set(props.sessionID, controller)
-
+	
 	// STEP 把标题行登记到模块级动画表：帧定时器据此逐帧写右侧缓冲动画图标
 	// 存活探针挂在标题节点上：侧边栏被折叠收起或切走时整块树会被 destroyRecursively，
 	// 据此回收本实例的动画与渲染登记，避免帧定时器往死节点写内容
@@ -444,28 +444,28 @@ function SidebarSection(props: {
 		alive: () => isAlive(titleNode),
 	}
 	if (spinnerEnabled) sidebarTitles.set(props.sessionID, spinner)
-
+	
 	// SUBSTEP 改写缓冲动画图标的显隐与首帧内容：活动显示、闲置隐藏
 	const applySpinner = (active: boolean) => {
 		// BRANCH 开关关闭：节点根本没建，直接空转返回
 		if (! spinnerEnabled) return
-
+		
 		// STEP 同步真值，供帧定时器做空闲门控
 		spinnerActive = active
 		spinner.active = active
-
+		
 		// BRANCH 节点尚未捕获 (ref 未回调) 时无处可写
 		if (spinnerNode === undefined) return
-
+		
 		// STEP 显隐与活动态对齐：闲置时隐藏整个节点，不留空格占位
 		if (spinnerNode.visible !== active) spinnerNode.visible = active
-
+		
 		// BRANCH 闲置即停止写内容，帧推进交给帧定时器
 		if (! active) return
-
+		
 		// STEP 刚进入活动态时补上首帧内容，避免图标空着等待下一次跳帧
 		if (spinnerNode.content === "") spinnerNode.content = SPINNER_FRAMES[spinnerFrame % SPINNER_FRAMES.length]
-
+		
 	}
 	
 	// SUBSTEP 尝试首帧渲染：所有 ref 都回调后才强制采样一次
@@ -553,7 +553,7 @@ function SidebarSection(props: {
 		const titleColor = props.api.theme.current.text
 		if (titleNode !== undefined && titleNode.fg !== titleColor) titleNode.fg = titleColor
 		if (arrowNode !== undefined && arrowNode.fg !== titleColor) arrowNode.fg = titleColor
-
+		
 		// SUBSTEP 缓冲动画图标：活动时显示并加载动画，闲置时隐藏；
 		// 活动判据取自读数的 active 字段，与 prompt 单行的 colorFor 同一来源
 		applySpinner(readout.active)
@@ -709,7 +709,7 @@ const tui: TuiPlugin = async (api, options) => {
 	// 用 Set 避免互相覆盖
 	const painters = new Map<string, Set<Painter>>()
 	const disposers: Array<() => void> = []
-
+	
 	// SUBSTEP 登记单个会话的刷新回调，可附带存活探针用于回收已卸载组件
 	const registerPainter = (sessionID: string, request: (now: number, force: boolean) => void, alive?: () => boolean) => {
 		let set = painters.get(sessionID)
@@ -718,9 +718,9 @@ const tui: TuiPlugin = async (api, options) => {
 			painters.set(sessionID, set)
 		}
 		set.add({ request, alive })
-
+		
 	}
-
+	
 	// SUBSTEP 广播刷新：跳过已销毁组件的回调，全部已登记的存活回调各跑一遍
 	const requestAll = (force: boolean) => {
 		const now = Date.now()
@@ -730,9 +730,9 @@ const tui: TuiPlugin = async (api, options) => {
 				painter.request(now, force)
 			}
 		}
-
+		
 	}
-
+	
 	// STEP 剔除已销毁组件的悬挂登记
 	// </br>opentui 的 ref 回调不提供 unmount 通知，组件被「切换会话 / 收起侧边栏」这类
 	// 路径卸载时只能靠节点的 isDestroyed 兜底回收，否则帧定时器会每 100ms 往死节点写内容，
@@ -743,21 +743,21 @@ const tui: TuiPlugin = async (api, options) => {
 			for (const painter of set) {
 				if (! isAliveProbe(painter.alive)) set.delete(painter)
 			}
-
+			
 			// STEP 该会话已无任何存活回调时，连键一起摘掉
 			if (set.size === 0) painters.delete(sessionID)
-
+			
 		}
-
+		
 		// SUBSTEP 侧边栏两表同理：标题行节点被销毁即视为整块侧边栏已卸载
 		for (const [sessionID, spinner] of sidebarTitles) {
 			if (isAliveProbe(spinner.alive)) continue
 			sidebarTitles.delete(sessionID)
 			sidebarControllers.delete(sessionID)
 		}
-
+		
 	}
-
+	
 	// STEP 接线事件流：消息类事件驱动指标引擎，状态类事件驱动 STS
 	
 	// SUBSTEP message.updated：user 锚定开轮 / assistant 开始与完成
@@ -852,11 +852,11 @@ const tui: TuiPlugin = async (api, options) => {
 		// NOTE 只有会话被真正删除才释放状态；挂机 / 切走一律保留读数
 		// PART 保留 painters 中该会话的回调，让 prompt 行能在删除后渲染一次占位回落
 		forgetSession(state, event.properties.sessionID)
-
+		
 		// STEP 先广播一次：此时 painter 仍在表里，能让界面把该会话刷新成占位回落。
 		// 这一步必须排在下面的清理之前，否则节点会停留在删除前的旧读数上
 		requestAll(true)
-
+		
 		// STEP 广播完成后再摘除全部悬挂登记：会话已释放，继续留着会让帧定时器
 		// 每 100ms 往死节点写内容、指标节拍每 250ms 跑一遍无人观看的 buildReadout
 		painters.delete(event.properties.sessionID)
@@ -870,7 +870,7 @@ const tui: TuiPlugin = async (api, options) => {
 		pruneDestroyed()
 		requestAll(false)
 	}, TICK_MS)
-
+	
 	// STEP 启动独立的动画帧定时器：100ms 一帧，与 250ms 的指标节拍互不干扰，
 	// 复用指标节拍会让 10 帧动画每拍跳 2~3 格，看起来是卡顿而非动画。
 	// BRANCH sidebarSpinner=false 时整个定时器都不启动，省掉 100ms 一次的无谓空转
@@ -880,7 +880,7 @@ const tui: TuiPlugin = async (api, options) => {
 			// STEP 先剔除已销毁组件的悬挂登记：ref 回调拿不到 unmount 通知，
 			// 组件被「切换会话 / 收起侧边栏」这类路径卸载时只能靠 isDestroyed 兜底回收
 			pruneDestroyed()
-
+			
 			// BRANCH 空闲门控：没有任何侧边栏实例处于活动态时直接返回，
 			// 既不写节点也不 requestRender，避免空转时白烧 CPU
 			let hasActive = false
@@ -891,11 +891,11 @@ const tui: TuiPlugin = async (api, options) => {
 				}
 			}
 			if (! hasActive) return
-
+			
 			// STEP 帧号前进一格并取对应字符
 			spinnerFrame = (spinnerFrame + 1) % SPINNER_FRAMES.length
 			const frame = SPINNER_FRAMES[spinnerFrame]
-
+			
 			// STEP 只给活动态且节点已就位并仍存活的实例写内容
 			for (const spinner of sidebarTitles.values()) {
 				if (! spinner.active) continue
@@ -903,7 +903,7 @@ const tui: TuiPlugin = async (api, options) => {
 				if (! isAlive(spinner.spinnerNode)) continue
 				spinner.spinnerNode.content = frame
 			}
-
+			
 			// STEP 命令式改写节点后必须显式请求重绘，否则不会真正画出来
 			api.renderer.requestRender()
 		}, SPINNER_FRAME_MS)
@@ -987,7 +987,7 @@ const tui: TuiPlugin = async (api, options) => {
 		sidebarControllers.clear()
 		sidebarTitles.clear()
 		clearInterval(timer)
-
+		
 		// BRANCH 开关关闭时帧定时器压根没启动，无需清理
 		if (spinnerTimer !== undefined) clearInterval(spinnerTimer)
 	})

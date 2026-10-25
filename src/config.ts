@@ -210,7 +210,7 @@ const LOCATION_LOOKUP = new Set<string>(DEFAULT_LOCATIONS);
  */
 function has(value: unknown): boolean {
 	return (! (value === undefined)) && (! (value === null));
-
+	
 }
 
 /**
@@ -224,7 +224,7 @@ function has(value: unknown): boolean {
 function normalizeItems(raw: unknown): FieldName[] {
 	// BRANCH 非数组直接回落默认全展示
 	if (! Array.isArray(raw)) return [...DEFAULT_ITEMS];
-
+	
 	// STEP 去重并丢弃未知字段，保持用户给定顺序
 	const picked: FieldName[] = [];
 	for (const entry of raw) {
@@ -234,11 +234,11 @@ function normalizeItems(raw: unknown): FieldName[] {
 		if (picked.includes(name as FieldName)) continue;
 		picked.push(name as FieldName);
 	}
-
+	
 	// BRANCH 全部被过滤掉时回落到默认全展示
 	if (picked.length === 0) return [...DEFAULT_ITEMS];
 	return picked;
-
+	
 }
 
 /**
@@ -252,7 +252,7 @@ function normalizeItems(raw: unknown): FieldName[] {
 function normalizeLocations(raw: unknown): LocationName[] {
 	// BRANCH 非数组直接回落默认全开
 	if (! Array.isArray(raw)) return [...DEFAULT_LOCATIONS];
-
+	
 	// STEP 去重并丢弃未知位置，保持用户给定顺序
 	const picked: LocationName[] = [];
 	for (const entry of raw) {
@@ -262,11 +262,11 @@ function normalizeLocations(raw: unknown): LocationName[] {
 		if (picked.includes(name as LocationName)) continue;
 		picked.push(name as LocationName);
 	}
-
+	
 	// BRANCH 全部被过滤掉时回落到默认全开
 	if (picked.length === 0) return [...DEFAULT_LOCATIONS];
 	return picked;
-
+	
 }
 
 /**
@@ -283,14 +283,14 @@ function normalizeLocations(raw: unknown): LocationName[] {
 function normalizeNumber(raw: unknown, fallback: number, min: number, max: number): number {
 	// STEP 非法类型回落默认值
 	if (! (typeof raw === "number") || ! Number.isFinite(raw)) return fallback;
-
+	
 	// STEP 上下限钳制
 	if (raw < min) return min;
 	if (raw > max) return max;
-
+	
 	// STEP 向下取整后返回
 	return Math.floor(raw);
-
+	
 }
 
 /**
@@ -304,19 +304,19 @@ function normalizeNumber(raw: unknown, fallback: number, min: number, max: numbe
 function normalizeSts(raw: unknown): StsText {
 	// STEP 以默认文案表为底本
 	const text: StsText = { ...DEFAULT_STS_TEXT };
-
+	
 	// BRANCH 非对象直接返回默认表
 	if (! (typeof raw === "object") || raw === null) return text;
-
+	
 	// STEP 逐项拷贝合法的字符串覆盖值
 	for (const key of Object.keys(DEFAULT_STS_TEXT) as Array<keyof StsText>) {
 		const value = (raw as Record<string, unknown>)[key];
 		if (typeof value === "string") text[key] = value;
 	}
-
+	
 	// STEP 返回合并结果
 	return text;
-
+	
 }
 
 /**
@@ -330,19 +330,19 @@ function normalizeSts(raw: unknown): StsText {
 function normalizeLabels(raw: unknown): LabelMap {
 	// STEP 以默认显示名表为底本
 	const labels: LabelMap = { ...DEFAULT_LABELS };
-
+	
 	// BRANCH 非对象直接返回默认表
 	if (! (typeof raw === "object") || raw === null) return labels;
-
+	
 	// STEP 只遍历已知字段名，未提及的键天然忽略
 	for (const key of FIELD_ORDER) {
 		const value = (raw as Record<string, unknown>)[key];
 		if (typeof value === "string" && value.length > 0) labels[key] = value;
 	}
-
+	
 	// STEP 返回合并结果
 	return labels;
-
+	
 }
 
 /**
@@ -359,7 +359,7 @@ function normalizeRefresh(source: Record<string, unknown>): RefreshConfig {
 		count: normalizeNumber(source.refreshCountMs, DEFAULT_REFRESH.count, MIN_REFRESH_MS, MAX_REFRESH_MS),
 		clock: normalizeNumber(source.refreshClockMs, DEFAULT_REFRESH.clock, MIN_REFRESH_MS, MAX_REFRESH_MS),
 	};
-
+	
 }
 
 // ===== ===== ===== ===== [导出方法] ===== ===== ===== =====
@@ -375,7 +375,7 @@ function normalizeRefresh(source: Record<string, unknown>): RefreshConfig {
 export function resolveConfig(options?: Record<string, unknown>): ResolvedConfig {
 	// STEP options 缺省时按空对象处理
 	const source = has(options) ? (options as Record<string, unknown>) : {};
-
+	
 	// STEP 逐项归一化：合法值采纳，非法值回落默认
 	return {
 		items: normalizeItems(source.items ?? source.fields),
@@ -399,10 +399,10 @@ export function resolveConfig(options?: Record<string, unknown>): ResolvedConfig
 		sidebarTitle: typeof source.sidebarTitle === "string" && source.sidebarTitle.length > 0 ? source.sidebarTitle : DEFAULT_CONFIG.sidebarTitle,
 		sidebarIndent: typeof source.sidebarIndent === "string" ? source.sidebarIndent : DEFAULT_CONFIG.sidebarIndent,
 		sidebarAlign: source.sidebarAlign === false ? false : true,
-
+		
 		// PART 缓冲动画图标默认开启：关掉后侧边栏不再用动画表达工作状态；
 		// 判据与 sidebarAlign 一致，只有显式 false 才关闭，非布尔值一律回落为开
 		sidebarSpinner: source.sidebarSpinner === false ? false : DEFAULT_CONFIG.sidebarSpinner,
 	};
-
+	
 }

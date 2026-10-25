@@ -53,10 +53,10 @@ function stripComments(text: string): string {
 	// STEP 先整体去掉块注释 (含 JSDoc)，正则容错未闭合的起始标记，避免误吞后续代码
 	let stripped = text.replace(/\/\*[\s\S]*?\*\//g, "");
 	stripped = stripped.replace(/\/\*[^*]*$/g, "");
-
+	
 	// STEP 再去掉行注释，只砍掉第一个换行符之前的内容，保留换行以维持行边界
 	return stripped.replace(/\/\/[^\n]*/g, "");
-
+	
 }
 
 // ===== ===== ===== ===== [逻辑代码] ===== ===== ===== =====
